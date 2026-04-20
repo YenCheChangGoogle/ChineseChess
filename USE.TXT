@@ -1,0 +1,66 @@
+# ChineseChess 專案啟動、註冊與使用指南
+
+本專案是一個基於 Spring Boot 3.1.5 的 Java Web 專案，整合了 WebSocket、MySQL 以及 Redis。
+
+## 1. 啟動準備
+在啟動專案前，請確保您的環境中已安裝並啟動以下服務：
+* JDK 17
+* MySQL: 需建立名為 `openclaw_db` 的資料庫。
+    * 預設帳號：root / 密碼：1234
+* Redis: 需在本地運行（預設連接埠 6379）。
+    * 預設密碼：polk098
+
+## 2. 如何啟動專案
+您可以使用 Maven 指令啟動：
+```bash
+cd C:\Users\張晏哲\.openclaw\workspace\ChineseChess
+mvn spring-boot:run
+```
+啟動後，伺服器預設運行在：http://localhost:8088
+
+## 3. 如何註冊與登入
+
+### 方法 A：透過網頁介面 (最簡單)
+1. 啟動專案後，使用瀏覽器訪問：`http://localhost:8088/`
+2. 在頁面下方的 **「新玩家註冊」** 區塊中，輸入您想要的帳號與密碼。
+3. 點擊 **「註冊帳號」** 按鈕。
+4. 看到「註冊成功」提示後，即可在上方登入區塊進行登入。
+
+### 方法 B：透過 API 接口 (開發者使用)
+專案提供 `/api/auth` 接口供外部管理。
+
+#### 1. 註冊新帳號 (Register)
+- Endpoint: POST http://localhost:8088/api/auth/register
+- Content-Type: application/json
+- 請求內容 (Body):
+    {
+      "name": "使用者名稱",
+      "password": "密碼"
+    }
+- 成功回應: {"message": "User registered successfully"}
+
+#### 2. 登入帳號 (Login)
+- Endpoint: POST http://localhost:8088/api/auth/login
+- Content-Type: application/json
+- 請求內容 (Body):
+    {
+      "name": "使用者名稱",
+      "password": "密碼"
+    }
+- 成功回應: 
+    {
+      "sessionId": "uuid-string",
+      "name": "使用者名稱",
+      "message": "Login successful"
+    }
+
+## 4. 如何使用 (功能概覽)
+透過瀏覽器訪問以下頁面：
+* 首頁: http://localhost:8088/ (index.html)
+* 大廳: http://localhost:8088/lobby (lobby.html) — 查看或建立房間。
+* 對局頁面: http://localhost:8088/game (game.html) — 進行對局。
+* 管理後台: http://localhost:8088/admin (admin.html)
+    * 預設管理員: 帳號 admin / 密碼 admin
+
+## 總結流程
+啟動 MySQL/Redis -> 執行 mvn spring-boot:run -> 訪問 localhost:8088 -> 註冊/登入 -> 進入 Lobby 建立房間開始對弈。

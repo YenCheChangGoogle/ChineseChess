@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChineseChess - 網路線上中國象棋</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Microsoft JhengHei', sans-serif; }
+        .auth-container { max-width: 400px; margin: 100px auto; }
+        .card { border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .btn-primary { background-color: #8b4513; border-color: #8b4513; }
+        .btn-primary:hover { background-color: #a0522d; border-color: #a0522d; }
+    </style>
+</head>
+<body>
+    <div class="container auth-container">
+        <div class="text-center mb-4">
+            <h1 class="fw-bold" style="color: #8b4513;">🏮 ChineseChess</h1>
+            <p class="text-muted">網路線上中國象棋</p>
+            <div id="local-ip" class="badge bg-info text-dark">偵測本機 IP 中...</div>
+        </div>
+
+        <div class="card p-4 mb-4">
+            <h4 class="text-center mb-3">玩家登入</h4>
+            <form id="loginForm">
+                <div class="mb-3">
+                    <label class="form-label">帳號</label>
+                    <input type="text" id="loginUser" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">密碼</label>
+                    <input type="password" id="loginPass" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">登入</button>
+            </form>
+        </div>
+
+        <div class="card p-4">
+            <h4 class="text-center mb-3">新玩家註冊</h4>
+            <form id="regForm">
+                <div class="mb-3">
+                    <label class="form-label">帳號</label>
+                    <input type="text" id="regUser" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">密碼</label>
+                    <input type="password" id="regPass" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-outline-secondary w-100">註冊帳號</button>
+            </form>
+            <div class="text-center mt-3">
+                <a href="/ChineseChess/admin" class="text-decoration-none small text-muted">管理員進入通道</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // 模擬獲取本機 IP (實際應由後端 API 提供)
+            $('#local-ip').text('本機 IP: 127.0.0.1');
+
+            $('#loginForm').submit(function(e) {
+                e.preventDefault();
+                const data = { name: $('#loginUser').val(), password: $('#loginPass').val() };
+                $.ajax({
+                    url: '/ChineseChess/api/auth/login',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(data),
+                    success: function(res) {
+                        localStorage.setItem('sessionId', res.sessionId);
+                        localStorage.setItem('username', res.name);
+                        window.location.href = '/ChineseChess/lobby';
+                    },
+                    error: function() { alert('登入失敗，請檢查帳號密碼'); }
+                });
+            });
+
+            $('#regForm').submit(function(e) {
+                e.preventDefault();
+                const data = { name: $('#regUser').val(), password: $('#regPass').val() };
+                $.ajax({
+                    url: '/ChineseChess/api/auth/register',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(data),
+                    success: function() { alert('註冊成功！請登入'); },
+                    error: function() { alert('註冊失敗，帳號可能已被佔用'); }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
