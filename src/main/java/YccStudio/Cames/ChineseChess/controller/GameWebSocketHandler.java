@@ -1,15 +1,24 @@
 package YccStudio.Cames.ChineseChess.controller;
 
+import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.springframework.stereotype.Component;
-import org.springframework.web.socket.*;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
-import YccStudio.Cames.ChineseChess.service.ChessGameService;
-import YccStudio.Cames.ChineseChess.service.RoomService;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import YccStudio.Cames.ChineseChess.model.Room;
+import YccStudio.Cames.ChineseChess.service.ChessGameService;
+import YccStudio.Cames.ChineseChess.service.RoomService;
 
 @Component
 public class GameWebSocketHandler extends TextWebSocketHandler {
@@ -20,6 +29,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, String> sessionToUser = new ConcurrentHashMap<>();
+    private final Map<String, Set<WebSocketSession>> roomSessions = new ConcurrentHashMap<>();
 
     public GameWebSocketHandler(ChessGameService chessGameService, RoomService roomService) {
         this.chessGameService = chessGameService;
@@ -58,20 +68,37 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         
         sessionToUser.put(session.getId(), username);
         roomService.joinRoom(roomId, username);
-        chessGameService.createGame(roomId); // Initialize board for the room
+        
+        // Add session to room tracking
+        roomSessions.computeIfAbsent(roomId, k -> Collections.synchronizedSet(new HashSet<>())).add(session);
         
         int color = roomService.getPlayerColor(username);
         int currentTurn = chessGameService.getCurrentTurn(roomId);
+        int[][] board = chessGameService.getBoard(roomId);
         
-        // Notify user of their role
+        // Notify user of their role and current room status
         Map<String, Object> response = new HashMap<>();
         response.put("type", "JOIN_SUCCESS");
         response.put("color", color); 
         response.put("roomId", roomId);
         response.put("currentTurn", currentTurn);
+        response.put("board", board); // Include board immediately on join
+        
+        // Tell the joining player if the game is already playing
+        if ("PLAYING".equals(roomService.getRoom(roomId).getStatus())) {
+            response.put("gameState", "PLAYING");
+        } else {
+            response.put("gameState", "WAITING");
+        }
+        
         session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
 
         broadcastToRoom(roomId, "{\"type\":\"PLAYER_JOINED\", \"user\":\"" + username + "\"}");
+        
+        // Explicitly trigger game start if both are present
+        if ("PLAYING".equals(roomService.getRoom(roomId).getStatus())) {
+            broadcastToRoom(roomId, "{\"type\":\"GAME_STARTED\"}");
+        }
     }
 
     private void handleMove(WebSocketSession session, Map<String, Object> data) throws IOException {
@@ -104,7 +131,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             chessGameService.movePiece(roomId, startRow, startCol, endRow, endCol);
             chessGameService.switchTurn(roomId);
             
-            // Broadcast the move to everyone in the room
+            // Broadcast the move and the new board state to everyone in the room
             Map<String, Object> moveData = new HashMap<>();
             moveData.put("type", "MOVE_MADE");
             moveData.put("startRow", startRow);
@@ -112,6 +139,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             moveData.put("endRow", endRow);
             moveData.put("endCol", endCol);
             moveData.put("user", username);
+            moveData.put("board", chessGameService.getBoard(roomId));
             
             broadcastToRoom(roomId, objectMapper.writeValueAsString(moveData));
 
@@ -129,6 +157,9 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 gameOverData.put("winner", winner);
                 gameOverData.put("reason", (winner == 1) ? "紅方獲勝 (將軍被吃或將死)" : "黑方獲勝 (將軍被吃或將死)");
                 broadcastToRoom(roomId, objectMapper.writeValueAsString(gameOverData));
+                
+                // Reset board for the next game
+                resetAndSyncGame(roomId);
                 return; // End move handling, game is over
             }
 
@@ -177,26 +208,97 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         gameOverData.put("loser", username);
 
         broadcastToRoom(roomId, objectMapper.writeValueAsString(gameOverData));
+        
+        // Reset board for the next game
+        resetAndSyncGame(roomId);
     }
 
     private void broadcastToRoom(String roomId, String message) {
-        sessions.values().stream()
-                .filter(s -> {
-                    String user = sessionToUser.get(s.getId());
-                    return user != null && roomId.equals(roomService.getRoomIdByUsername(user));
-                })
-                .forEach(s -> {
+        Set<WebSocketSession> roomSess = roomSessions.get(roomId);
+        if (roomSess != null) {
+            synchronized (roomSess) {
+                roomSess.forEach(s -> {
                     try {
-                        s.sendMessage(new TextMessage(message));
+                        if (s.isOpen()) {
+                            s.sendMessage(new TextMessage(message));
+                        }
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
                 });
+            }
+        }
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         String user = sessionToUser.remove(session.getId());
         sessions.remove(session.getId());
+        
+        if (user != null) {
+            String roomId = roomService.getRoomIdByUsername(user);
+            if (roomId != null) {
+                // Check if they were in a game before removing them from room tracking
+                boolean wasPlaying = "PLAYING".equals(roomService.getRoom(roomId).getStatus());
+                
+                // Remove from room tracking
+                Set<WebSocketSession> roomSess = roomSessions.get(roomId);
+                if (roomSess != null) {
+                    roomSess.remove(session);
+                    if (roomSess.isEmpty()) {
+                        roomSessions.remove(roomId);
+                    }
+                }
+
+                // Handle game interruption
+                String interruptedRoomId = roomService.leaveRoom(user);
+                if (interruptedRoomId != null) {
+                    handleGameInterruption(interruptedRoomId, user);
+                }
+            }
+        }
+    }
+
+    private void handleGameInterruption(String roomId, String loserUsername) {
+        Room room = roomService.getRoom(roomId);
+        if (room == null || room.getPlayers() == null || room.getPlayers().isEmpty()) return;
+
+        // Find the winner (the player who is NOT the one who left)
+        String winnerUsername = null;
+        for (String player : room.getPlayers()) {
+            if (!player.equals(loserUsername)) {
+                winnerUsername = player;
+                break;
+            }
+        }
+
+        if (winnerUsername == null) return; // No one left to win
+
+        int winnerColor = roomService.getPlayerColor(winnerUsername);
+
+        broadcastToRoom(roomId, "{\"type\":\"GAME_OVER\", \"winner\":" + winnerColor + ", \"reason\":\"對方擅自離開房間，您獲得勝利！\", \"loser\":\"" + loserUsername + "\"}");
+        
+        // Reset board for the next game
+        resetAndSyncGame(roomId);
+    }
+
+    private void resetAndSyncGame(String roomId) {
+        // Reset board and turn in service
+        chessGameService.createGame(roomId);
+        
+        // Sync new board and turn to all players in the room
+        int[][] board = chessGameService.getBoard(roomId);
+        int currentTurn = chessGameService.getCurrentTurn(roomId);
+        
+        Map<String, Object> syncData = new HashMap<>();
+        syncData.put("type", "BOARD_SYNC");
+        syncData.put("board", board);
+        syncData.put("currentTurn", currentTurn);
+        
+        try {
+            broadcastToRoom(roomId, objectMapper.writeValueAsString(syncData));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 }

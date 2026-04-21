@@ -6,6 +6,8 @@
     <style>
         body { font-family: 'Microsoft JhengHei', sans-serif; background: #2c3e50; color: white; display: flex; flex-direction: column; align-items: center; padding-top: 50px; }
         .lobby-container { background: #34495e; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); width: 500px; text-align: center; }
+        .user-info { margin-bottom: 20px; font-size: 16px; color: #bdc3c7; }
+        .user-info b { color: #f1c40f; }
         .room-list { margin: 20px 0; text-align: left; max-height: 300px; overflow-y: auto; }
         .room-item { 
             background: #2c3e50; padding: 15px; margin-bottom: 10px; 
@@ -20,6 +22,7 @@
 <body>
     <div class="lobby-container">
         <h1>遊戲大廳</h1>
+        <div id="user-info" class="user-info">載入中...</div>
         <button class="create-btn" onclick="createRoom()">創建新房間</button>
         <h3>目前可用房間</h3>
         <div id="room-list" class="room-list">
@@ -62,8 +65,9 @@
             rooms.forEach(room => {
                 const item = document.createElement('div');
                 item.className = 'room-item';
+                const statusText = room.status === 'PLAYING' ? '對戰中' : (room.status === 'WAITING' ? '待戰中' : room.status);
                 item.innerHTML = `
-                    <span>房間 ID: <b>${room.roomId}</b> | 狀態: ${room.status}</span>
+                    <span>房間 ID: <b>${room.roomId}</b> | 狀態: ${statusText}</span>
                     <button onclick="joinRoom('${room.roomId}')">加入</button>
                 `;
                 listDiv.appendChild(item);
@@ -72,6 +76,14 @@
 
         refreshRooms();
         setInterval(refreshRooms, 5000);
+
+        // 顯示已登入使用者帳號
+        const currentUsername = localStorage.getItem('username');
+        if (currentUsername) {
+            document.getElementById('user-info').innerHTML = `已登入帳號: <b>${currentUsername}</b>`;
+        } else {
+            document.getElementById('user-info').innerText = '未登入';
+        }
     </script>
 </body>
 </html>

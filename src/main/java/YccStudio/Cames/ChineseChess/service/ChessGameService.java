@@ -10,6 +10,8 @@ public class ChessGameService {
     private static final int ROWS = 10;
     private static final int COLS = 9;
     
+    public record ValidationResult(boolean isValid, String reason) {}
+
     // RoomId -> BoardState
     private final Map<String, int[][]> roomBoards = new ConcurrentHashMap<>();
     // RoomId -> CurrentTurn (1: Red, -1: Black)
@@ -142,17 +144,25 @@ public class ChessGameService {
     }
 
     public boolean isValidMove(String roomId, int startRow, int startCol, int endRow, int endCol, int playerColor) {
+        return validateMove(roomId, startRow, startCol, endRow, endCol, playerColor).isValid();
+    }
+
+    public String getMoveInvalidReason(String roomId, int startRow, int startCol, int endRow, int endCol, int playerColor) {
+        return validateMove(roomId, startRow, startCol, endRow, endCol, playerColor).reason();
+    }
+
+    private ValidationResult validateMove(String roomId, int startRow, int startCol, int endRow, int endCol, int playerColor) {
         int[][] board = getBoard(roomId);
-        if (board == null) return false;
-        if (endRow < 0 || endRow >= ROWS || endCol < 0 || endCol >= COLS) return false;
+        if (board == null) return new ValidationResult(false, "伺服器錯誤，無法獲取棋盤");
+        if (endRow < 0 || endRow >= ROWS || endCol < 0 || endCol >= COLS) return new ValidationResult(false, "目標位置超出棋盤範圍");
 
         int piece = board[startRow][startCol];
-        if (piece == 0) return false;
-        if ((playerColor == 1 && piece < 0) || (playerColor == -1 && piece > 0)) return false;
+        if (piece == 0) return new ValidationResult(false, "選中的位置沒有棋子");
+        if ((playerColor == 1 && piece < 0) || (playerColor == -1 && piece > 0)) return new ValidationResult(false, "不能移動對方的棋子");
 
         int targetPiece = board[endRow][endCol];
         if (targetPiece != 0 && ((playerColor == 1 && targetPiece > 0) || (playerColor == -1 && targetPiece < 0))) {
-            return false;
+            return new ValidationResult(false, "不能吃掉自己的棋子");
         }
 
         int absPiece = Math.abs(piece);
@@ -160,75 +170,111 @@ public class ChessGameService {
         int dc = endCol - startCol;
 
         boolean moveLegal = false;
+        String reason = "此走法不符合象棋規則";
+
         switch (absPiece) {
             case 1: // Rook
-                if (dr != 0 && dc != 0) return false;
-                moveLegal = isPathClear(board, startRow, startCol, endRow, endCol);
+                if (dr != 0 && dc != 0) {
+                    reason = "車只能直線移動";
+                } else if (!isPathClear(board, startRow, startCol, endRow, endCol)) {
+                    reason = "車的行進路徑被阻擋";
+                } else {
+                    moveLegal = true;
+                }
                 break;
             case 2: // Horse
-                if (!((Math.abs(dr) == 2 && Math.abs(dc) == 1) || (Math.abs(dr) == 1 && Math.abs(dc) == 2))) return false;
-                int midR = (Math.abs(dr) == 2) ? startRow + (dr / 2) : startRow;
-                int midC = (Math.abs(dc) == 2) ? startCol + (dc / 2) : startCol;
-                moveLegal = (board[midR][midC] == 0);
+                if (!((Math.abs(dr) == 2 && Math.abs(dc) == 1) || (Math.abs(dr) == 1 && Math.abs(dc) == 2))) {
+                    reason = "馬的走法不正確 (需走『日』字)";
+                } else {
+                    int midR = (Math.abs(dr) == 2) ? startRow + (dr / 2) : startRow;
+                    int midC = (Math.abs(dc) == 2) ? startCol + (dc / 2) : startCol;
+                    if (board[midR][midC] != 0) {
+                        reason = "馬被『蹩馬腿』，無法移動";
+                    } else {
+                        moveLegal = true;
+                    }
+                }
                 break;
             case 3: // Elephant
-                if (Math.abs(dr) != 2 || Math.abs(dc) != 2) return false;
-                if ((playerColor == 1 && endRow < 5) || (playerColor == -1 && endRow > 4)) return false;
-                moveLegal = (board[startRow + (dr / 2)][startCol + (dc / 2)] == 0);
+                if (Math.abs(dr) != 2 || Math.abs(dc) != 2) {
+                    reason = "相的走法不正確 (需走『田』字)";
+                } else if ((playerColor == 1 && endRow < 5) || (playerColor == -1 && endRow > 4)) {
+                    reason = "相不能過河";
+                } else if (board[startRow + (dr / 2)][startCol + (dc / 2)] != 0) {
+                    reason = "相被『蹩相腿』，無法移動";
+                } else {
+                    moveLegal = true;
+                }
                 break;
             case 4: // Advisor
-                if (Math.abs(dr) != 1 || Math.abs(dc) != 1) return false;
-                if (endCol < 3 || endCol > 5) return false;
-                if ((playerColor == 1 && endRow < 7) || (playerColor == -1 && endRow > 2)) return false;
-                moveLegal = true;
+                if (Math.abs(dr) != 1 || Math.abs(dc) != 1) {
+                    reason = "仕的走法不正確 (需斜走一格)";
+                } else if (endCol < 3 || endCol > 5 || (playerColor == 1 && endRow < 7) || (playerColor == -1 && endRow > 2)) {
+                    reason = "仕不能走出宮";
+                } else {
+                    moveLegal = true;
+                }
                 break;
             case 5: // General
-                if (Math.abs(dr) + Math.abs(dc) != 1) return false;
-                if (endCol < 3 || endCol > 5) return false;
-                if ((playerColor == 1 && endRow < 7) || (playerColor == -1 && endRow > 2)) return false;
-                moveLegal = true;
+                if (Math.abs(dr) + Math.abs(dc) != 1) {
+                    reason = "將帥只能直線移動一格";
+                } else if (endCol < 3 || endCol > 5 || (playerColor == 1 && endRow < 7) || (playerColor == -1 && endRow > 2)) {
+                    reason = "將帥不能走出宮";
+                } else {
+                    moveLegal = true;
+                }
                 break;
             case 6: // Cannon
-                if (dr != 0 && dc != 0) return false;
-                if (targetPiece == 0) {
-                    moveLegal = isPathClear(board, startRow, startCol, endRow, endCol);
+                if (dr != 0 && dc != 0) {
+                    reason = "炮只能直線移動";
+                } else if (targetPiece == 0) {
+                    if (!isPathClear(board, startRow, startCol, endRow, endCol)) {
+                        reason = "炮在無目標時不能跳過棋子";
+                    } else {
+                        moveLegal = true;
+                    }
                 } else {
-                    moveLegal = (countPiecesInPath(board, startRow, startCol, endRow, endCol) == 1);
+                    if (countPiecesInPath(board, startRow, startCol, endRow, endCol) != 1) {
+                        reason = "炮在攻擊時必須且只能跳過一個棋子";
+                    } else {
+                        moveLegal = true;
+                    }
                 }
                 break;
             case 7: // Soldier
                 int dir = (playerColor == 1) ? -1 : 1;
                 if (dr == dir && dc == 0) {
-                    moveLegal = true; // Forward
+                    moveLegal = true;
                 } else if (dr == 0 && Math.abs(dc) == 1) {
-                    // Horizontal move only after crossing river
-                    if ((playerColor == 1 && startRow <= 4) || (playerColor == -1 && startRow >= 5)) {
+                    if (!((playerColor == 1 && startRow <= 4) || (playerColor == -1 && startRow >= 5))) {
+                        reason = "卒/兵在過河前不能橫走";
+                    } else {
                         moveLegal = true;
                     }
+                } else {
+                    reason = "卒/兵走法錯誤";
                 }
                 break;
             default:
-                return false;
+                return new ValidationResult(false, "未知的棋子類型");
         }
 
-        if (!moveLegal) return false;
+        if (!moveLegal) return new ValidationResult(false, reason);
 
-        // Check "Flying General" rule (Generals cannot face each other without any pieces in between)
-        if (willCauseFlyingGeneral(board, startRow, startCol, endRow, endCol)) return false;
+        if (willCauseFlyingGeneral(board, startRow, startCol, endRow, endCol)) {
+            return new ValidationResult(false, "此走法會導致『飛將』(將帥不能直接對面)");
+        }
 
-        // Rule: A move is illegal if it puts the player's own general under attack (self-check)
         int[][] simulatedBoard = new int[ROWS][COLS];
         for (int r = 0; r < ROWS; r++) simulatedBoard[r] = board[r].clone();
         simulatedBoard[endRow][endCol] = board[startRow][startCol];
         simulatedBoard[startRow][startCol] = 0;
 
         if (isGeneralUnderAttack(simulatedBoard, playerColor)) {
-            // We can't return a specific error message from here, 
-            // but we'll handle the specific message in the Controller.
-            return false; 
+            return new ValidationResult(false, "此走法會導致您的將帥暴露在攻擊之下，請重新選擇！");
         }
 
-        return true;
+        return new ValidationResult(true, null);
     }
 
     private boolean willCauseFlyingGeneral(int[][] board, int sr, int sc, int er, int ec) {
@@ -259,84 +305,6 @@ public class ChessGameService {
             if (!blocked) return true; // Illegal: Flying General
         }
         return false;
-    }
-
-    public String getMoveInvalidReason(String roomId, int startRow, int startCol, int endRow, int endCol, int playerColor) {
-        int[][] board = getBoard(roomId);
-        if (board == null) return "伺服器錯誤，無法獲取棋盤";
-        if (endRow < 0 || endRow >= ROWS || endCol < 0 || endCol >= COLS) return "目標位置超出棋盤範圍";
-
-        int piece = board[startRow][startCol];
-        if (piece == 0) return "選中的位置沒有棋子";
-        if ((playerColor == 1 && piece < 0) || (playerColor == -1 && piece > 0)) return "不能移動對方的棋子";
-
-        int targetPiece = board[endRow][endCol];
-        if (targetPiece != 0 && ((playerColor == 1 && targetPiece > 0) || (playerColor == -1 && targetPiece < 0))) {
-            return "不能吃掉自己的棋子";
-        }
-
-        int absPiece = Math.abs(piece);
-        int dr = endRow - startRow;
-        int dc = endCol - startCol;
-
-        switch (absPiece) {
-            case 1: // Rook
-                if (dr != 0 && dc != 0) return "車只能直線移動";
-                if (!isPathClear(board, startRow, startCol, endRow, endCol)) return "車的行進路徑被阻擋";
-                break;
-            case 2: // Horse
-                if (!((Math.abs(dr) == 2 && Math.abs(dc) == 1) || (Math.abs(dr) == 1 && Math.abs(dc) == 2))) return "馬的走法不正確 (需走『日』字)";
-                int midR = (Math.abs(dr) == 2) ? startRow + (dr / 2) : startRow;
-                int midC = (Math.abs(dc) == 2) ? startCol + (dc / 2) : startCol;
-                if (board[midR][midC] != 0) return "馬被『蹩馬腿』，無法移動";
-                break;
-            case 3: // Elephant
-                if (Math.abs(dr) != 2 || Math.abs(dc) != 2) return "相的走法不正確 (需走『田』字)";
-                if ((playerColor == 1 && endRow < 5) || (playerColor == -1 && endRow > 4)) return "相不能過河";
-                if (board[startRow + (dr / 2)][startCol + (dc / 2)] != 0) return "相被『蹩相腿』，無法移動";
-                break;
-            case 4: // Advisor
-                if (Math.abs(dr) != 1 || Math.abs(dc) != 1) return "仕的走法不正確 (需斜走一格)";
-                if (endCol < 3 || endCol > 5) return "仕不能走出宮";
-                if ((playerColor == 1 && endRow < 7) || (playerColor == -1 && endRow > 2)) return "仕不能走出宮";
-                break;
-            case 5: // General
-                if (Math.abs(dr) + Math.abs(dc) != 1) return "將帥只能直線移動一格";
-                if (endCol < 3 || endCol > 5) return "將帥不能走出宮";
-                if ((playerColor == 1 && endRow < 7) || (playerColor == -1 && endRow > 2)) return "將帥不能走出宮";
-                break;
-            case 6: // Cannon
-                if (dr != 0 && dc != 0) return "炮只能直線移動";
-                if (targetPiece == 0) {
-                    if (!isPathClear(board, startRow, startCol, endRow, endCol)) return "炮在無目標時不能跳過棋子";
-                } else {
-                    if (countPiecesInPath(board, startRow, startCol, endRow, endCol) != 1) return "炮在攻擊時必須且只能跳過一個棋子";
-                }
-                break;
-            case 7: // Soldier
-                int dir = (playerColor == 1) ? -1 : 1;
-                if (dr == dir && dc == 0) {
-                    // Valid forward move
-                } else if (dr == 0 && Math.abs(dc) == 1) {
-                    if (!((playerColor == 1 && startRow <= 4) || (playerColor == -1 && startRow >= 5))) return "卒/兵在過河前不能橫走";
-                } else {
-                    return "卒/兵走法錯誤";
-                }
-                break;
-            default:
-                return "未知的棋子類型";
-        }
-
-        if (willCauseFlyingGeneral(board, startRow, startCol, endRow, endCol)) return "此走法會導致『飛將』(將帥不能直接對面)";
-
-        // Self-Check check
-        int[][] simulatedBoard = new int[ROWS][COLS];
-        for (int r = 0; r < ROWS; r++) simulatedBoard[r] = board[r].clone();
-        simulatedBoard[endRow][endCol] = board[startRow][startCol];
-        simulatedBoard[startRow][startCol] = 0;
-        if (isGeneralUnderAttack(simulatedBoard, playerColor)) return "此走法會導致您的將帥暴露在攻擊之下，請重新選擇！";
-
-        return null; // Valid move
     }
 
     public boolean isGeneralUnderAttack(String roomId, int generalColor) {

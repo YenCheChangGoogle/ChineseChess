@@ -106,8 +106,12 @@
             flex-direction: column; 
             gap: 15px;
         }
-        .info-card { background: #2c3e50; padding: 15px; border-radius: 8px; border-left: 5px solid #f1c40f; }
-        .info-label { font-size: 14px; color: #bdc3c7; margin-bottom: 5px; }
+        
+        .info-card       { background: #2c3e50; padding: 15px; border-radius: 8px; border-left: 5px solid #f1c40f; }
+        .info-card-red   { background: #FF0000; padding: 15px; border-radius: 8px; border-left: 5px solid #f1c40f; }
+        .info-card-black { background: #000000; padding: 15px; border-radius: 8px; border-left: 5px solid #f1c40f; }
+        
+        .info-label { font-size: 14px; color: white; margin-bottom: 5px; }
         .info-value { font-size: 20px; font-weight: bold; color: #fff; }
         
         #status-bar { 
@@ -240,7 +244,7 @@
                     
                     <!-- River -->
                     <rect x="0" y="320" width="640" height="80" fill="rgba(210, 180, 140, 0.3)" stroke="rgba(93, 64, 55, 0.5)" stroke-width="2" />
-                    <text x="160" y="378" font-family="Kaiti, STKaiti" font-size="68" fill="#5d4037" font-weight="bold" text-anchor="middle">漢 界</text>
+                    <text style="transform-origin: center;transform: rotate(180deg) translateX(317px);" x="160" y="378" font-family="Kaiti, STKaiti" font-size="68" fill="#5d4037" font-weight="bold" text-anchor="middle">漢 界</text>
                     <text x="480" y="378" font-family="Kaiti, STKaiti" font-size="68" fill="#5d4037" font-weight="bold" text-anchor="middle">楚 河</text>
                     
                     <!-- Palaces -->
@@ -256,7 +260,7 @@
         </div>
 
         <div id="info-panel">
-            <div class="info-card">
+            <div class="info-card" id="role-card">
                 <div class="info-label">玩家身分</div>
                 <div id="my-role" class="info-value">偵測中...</div>
             </div>
@@ -425,9 +429,21 @@
                 if (data.type === 'JOIN_SUCCESS') {
                     myColor = data.color;
                     const colorText = myColor === 1 ? '紅方' : (myColor === -1 ? '黑方' : '觀戰');
+                    
+                    document.getElementById('role-card').className = 'info-card ' + (myColor === 1 ? 'info-card-red' : (myColor === -1 ? 'info-card-black' : 'info-card'));
+                    
+                    
                     document.getElementById('status-bar').innerText = `對局準備就緒`;
-                    document.getElementById('my-role').innerText = colorText;
+                    document.getElementById('my-role').innerText = colorText + ' - ' + username;
                     document.getElementById('room-id-display').innerText = roomId;
+                    
+                    // Logic for initial opponent status:
+                    // If I'm not Red, then the Red player must already be there, or the game is already playing.
+                    if (myColor !== 1 || data.gameState === 'PLAYING') {
+                        document.getElementById('opponent-status').innerText = '對戰中';
+                    } else {
+                        document.getElementById('opponent-status').innerText = '無對手';
+                    }
                     
                     // Flip board if I am the Black player (start at top)
                     if (myColor === -1) {
@@ -438,14 +454,27 @@
                         updateTurnStatus(data.currentTurn);
                     }
                     
-                    socket.send(JSON.stringify({ type: 'SYNC' }));
+                    if (data.board) {
+                        renderBoard(data.board);
+                    } else {
+                        socket.send(JSON.stringify({ type: 'SYNC' }));
+                    }
                 } else if (data.type === 'BOARD_SYNC') {
                     renderBoard(data.board);
                 } else if (data.type === 'PLAYER_JOINED') {
-                    document.getElementById('opponent-status').innerText = '對手已就位';
+                    // Only show opponent joined if it's not myself
+                    if (data.user !== username) {
+                        document.getElementById('opponent-status').innerText = '對戰中';
+                    }
                     // Turn status is already set by JOIN_SUCCESS or TURN_CHANGED
+                } else if (data.type === 'GAME_STARTED') {
+                    document.getElementById('opponent-status').innerText = '對戰中';
                 } else if (data.type === 'MOVE_MADE') {
-                    socket.send(JSON.stringify({ type: 'SYNC' }));
+                    if (data.board) {
+                        renderBoard(data.board);
+                    } else {
+                        socket.send(JSON.stringify({ type: 'SYNC' }));
+                    }
                 } else if (data.type === 'TURN_CHANGED') {
                     updateTurnStatus(data.nextTurn);
                 } else if (data.type === 'CHECK') {

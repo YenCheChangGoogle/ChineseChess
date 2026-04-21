@@ -10,6 +10,11 @@ public class RoomService {
     
     private final Map<String, Room> rooms = new ConcurrentHashMap<>();
     private final Map<String, String> userToRoom = new ConcurrentHashMap<>();
+    private final ChessGameService chessGameService;
+
+    public RoomService(ChessGameService chessGameService) {
+        this.chessGameService = chessGameService;
+    }
 
     public Room createRoom(String ownerUsername) {
         String roomId = UUID.randomUUID().toString().substring(0, 8);
@@ -18,6 +23,10 @@ public class RoomService {
         room.setOwner(ownerUsername);
         room.setStatus("WAITING");
         rooms.put(roomId, room);
+        
+        // Initialize the game board when the room is created
+        chessGameService.createGame(roomId);
+        
         return room;
     }
 
@@ -42,6 +51,26 @@ public class RoomService {
         
         userToRoom.put(username, roomId);
         return room;
+    }
+
+    public String leaveRoom(String username) {
+        String roomId = userToRoom.remove(username);
+        if (roomId == null) return null;
+
+        Room room = rooms.get(roomId);
+        if (room == null) return null;
+
+        boolean wasPlaying = "PLAYING".equals(room.getStatus());
+        
+        if (room.getPlayers() != null) {
+            room.getPlayers().remove(username);
+        }
+
+        if (room.getPlayers().size() < 2) {
+            room.setStatus("WAITING");
+        }
+
+        return wasPlaying ? roomId : null; // Return roomId if a game was interrupted
     }
 
     public String getRoomIdByUsername(String username) {
