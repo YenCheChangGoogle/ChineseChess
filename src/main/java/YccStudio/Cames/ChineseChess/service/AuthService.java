@@ -24,6 +24,10 @@ public class AuthService {
         Optional<User> userOpt = userRepository.findByUsername(name);
         if (userOpt.isPresent() && userOpt.get().getPassword().equals(password)) {
             User user = userOpt.get();
+            // Generate new session ID to prevent multi-device login
+            String newSessionId = java.util.UUID.randomUUID().toString();
+            user.setSessionId(newSessionId);
+            userRepository.save(user);
             return Optional.of(user);
         }
         return Optional.empty();

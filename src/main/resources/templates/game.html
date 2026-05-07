@@ -206,6 +206,25 @@
             transition: 0.2s;
         }
         .btn-return:hover { transform: scale(1.05); background: #f39c12; }
+
+        /* 請對戰 動態提示 */
+        #play-now-alert {
+            background: linear-gradient(135deg, #2ecc71, #27ae60);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 20px;
+            font-weight: bold;
+            box-shadow: 0 0 25px rgba(46, 204, 113, 0.7);
+            text-align: center;
+            animation: playNowPulse 0.8s infinite alternate;
+            border: 3px solid #fff;
+            letter-spacing: 4px;
+        }
+        @keyframes playNowPulse {
+            from { transform: scale(1); opacity: 0.85; box-shadow: 0 0 20px rgba(46, 204, 113, 0.5); }
+            to   { transform: scale(1.03); opacity: 1;    box-shadow: 0 0 35px rgba(46, 204, 113, 0.9); }
+        }
     </style>
 
 
@@ -213,6 +232,7 @@
 <body>
     <h1>🏮 中國象棋線上對戰</h1>
     <div id="check-alert">⚠️ 將軍！請立刻防禦解除危機！</div>
+
     <div id="status-bar">等待連接伺服器...</div>
     
     <div id="game-layout">
@@ -272,6 +292,11 @@
                 <div class="info-label">對手狀態</div>
                 <div id="opponent-status" class="info-value">無對手</div>
             </div>
+            
+            <!-- 請對戰 動態提示 -->
+            <div id="play-now-alert" style="display:none;">
+                <span>⚔️ 請對戰 ⚔️</span>
+            </div>
         </div>
     </div>
 
@@ -296,10 +321,23 @@
         let selectedCell = null;
         let myColor = 0; // 1: Red, -1: Black
         let boardState = [];
+        let playNowTimer = null;
+
+        /**
+         * 顯示「請對戰」動態提示，3 秒後自動消失。
+         */
+        function showPlayNowAlert() {
+            const alert = document.getElementById('play-now-alert');
+            alert.style.display = 'block';
+            if (playNowTimer) clearTimeout(playNowTimer);
+            playNowTimer = setTimeout(() => {
+                alert.style.display = 'none';
+            }, 3000);
+        }
 
         const pieceMap = {
-            '1': '車', '2': '馬', '3': '相', '4': '仕', '5': '帥', '6': '炮', '7': '卒',
-            '-1': '車', '-2': '馬', '-3': '象', '-4': '士', '-5': '將', '-6': '炮', '-7': '卒'
+            '1': '俥', '2': '傌', '3': '相', '4': '仕', '5': '帥', '6': '炮', '7': '兵',
+            '-1': '車', '-2': '馬', '-3': '象', '-4': '士', '-5': '將', '-6': '包', '-7': '卒'
         };
 
         function initBoard() {
@@ -347,8 +385,18 @@
         }
 
         function handleCellClick(r, c) {
-            // Because we are clicking the intersection, the coordinates are simple
+            const piece = boardState[r][c];
+            const isMyPiece = piece !== 0 && ((myColor === 1 && piece > 0) || (myColor === -1 && piece < 0));
+
             if (selectedCell) {
+                if (isMyPiece) {
+                    // Switch selected piece if clicking another of my own pieces
+                    selectedCell = { r, c };
+                    renderBoard(boardState);
+                    return;
+                }
+
+                // Valid move attempt: empty cell or opponent's piece
                 const sr = selectedCell.r;
                 const sc = selectedCell.c;
                 
@@ -363,8 +411,7 @@
                 selectedCell = null;
                 renderBoard(boardState);
             } else {
-                const piece = boardState[r][c];
-                if (piece !== 0 && ((myColor === 1 && piece > 0) || (myColor === -1 && piece < 0))) {
+                if (isMyPiece) {
                     selectedCell = { r, c };
                     renderBoard(boardState);
                 }
@@ -437,9 +484,10 @@
                     document.getElementById('my-role').innerText = colorText + ' - ' + username;
                     document.getElementById('room-id-display').innerText = roomId;
                     
-                    // Logic for initial opponent status:
-                    // If I'm not Red, then the Red player must already be there, or the game is already playing.
-                    if (myColor !== 1 || data.gameState === 'PLAYING') {
+                    // 顯示對手狀態：若伺服器回傳 opponent 則顯示帳號，否則判斷遊戲狀態
+                    if (data.opponent) {
+                        document.getElementById('opponent-status').innerText = '對戰⚔️ ' + data.opponent;
+                    } else if (myColor !== 1 || data.gameState === 'PLAYING') {
                         document.getElementById('opponent-status').innerText = '對戰中';
                     } else {
                         document.getElementById('opponent-status').innerText = '無對手';
@@ -459,16 +507,35 @@
                     } else {
                         socket.send(JSON.stringify({ type: 'SYNC' }));
                     }
+                } else if (data.type === 'GAME_LOST_REDIRECT') {
+                    /* 【修正】此訊息表示上一局因對方離線而結束
+                     * 直接跳回大廳，不顯示「敗北」畫面 */
+                    console.log('收到 GAME_LOST_REDIRECT，直接返回大廳...');
+                    window.location.href = '/ChineseChess/lobby';
+                } else if (data.type === 'RESIGN_REJECT') {
+                    /* 【修正】沒有對手時按下投降，不顯示「敗北」，而是提示並跳回大廳 */
+                    alert(data.message || '目前沒有對手，無法投降');
+                    window.location.href = '/ChineseChess/lobby';
                 } else if (data.type === 'BOARD_SYNC') {
                     renderBoard(data.board);
                 } else if (data.type === 'PLAYER_JOINED') {
-                    // Only show opponent joined if it's not myself
+                    // 有人加入房間，顯示對方帳號
                     if (data.user !== username) {
-                        document.getElementById('opponent-status').innerText = '對戰中';
+                        document.getElementById('opponent-status').innerText = '⚔️ ' + data.user;
                     }
                     // Turn status is already set by JOIN_SUCCESS or TURN_CHANGED
                 } else if (data.type === 'GAME_STARTED') {
-                    document.getElementById('opponent-status').innerText = '對戰中';
+                    // 從 players 列表中找出對手名稱
+                    if (data.players && data.players.length >= 2) {
+                        const opponent = data.players.find(p => p !== username);
+                        if (opponent) {
+                            document.getElementById('opponent-status').innerText = '對戰⚔️ ' + opponent;
+                        } else {
+                            document.getElementById('opponent-status').innerText = '對戰中';
+                        }
+                    } else {
+                        document.getElementById('opponent-status').innerText = '對戰中';
+                    }
                 } else if (data.type === 'MOVE_MADE') {
                     if (data.board) {
                         renderBoard(data.board);
@@ -477,10 +544,45 @@
                     }
                 } else if (data.type === 'TURN_CHANGED') {
                     updateTurnStatus(data.nextTurn);
+                    if (data.nextTurn === myColor) {
+                        showPlayNowAlert();
+                    }
                 } else if (data.type === 'CHECK') {
                     document.getElementById('check-alert').style.display = 'block';
+                } else if (data.type === 'GAME_START_RESET') {
+                    /* 【新邏輯】對手就位，棋盤歸位，顯示提示 1 秒後消失 */
+                    const statusBar = document.getElementById('status-bar');
+                    statusBar.innerText = '⚔️ 對手就位 對戰開始 ⚔️';
+                    statusBar.style.background = '#2ecc71';
+                    setTimeout(() => {
+                        statusBar.style.background = '#f1c40f';
+                        statusBar.innerText = '對局準備就緒';
+                    }, 1000);
+                    // 從 players 列表中找出對手名稱
+                    if (data.players && data.players.length >= 2) {
+                        const opponent = data.players.find(p => p !== username);
+                        if (opponent) {
+                            document.getElementById('opponent-status').innerText = '⚔️ ' + opponent;
+                        }
+                    }
+                    // 重新同步棋盤
+                    socket.send(JSON.stringify({ type: 'SYNC' }));
+                } else if (data.type === 'ROOM_CLOSED_BY_ADMIN') {
+                    /* 【修正】管理員強制關閉房間 */
+                    alert(data.message || '管理者強制關閉房間!被迫離開!');
+                    window.location.href = '/ChineseChess/lobby';
+                } else if (data.type === 'ROOM_DELETED_BY_ADMIN') {
+                    /* 【新邏輯】管理員強制刪除房間 */
+                    alert(data.message || '管理者強制刪除房間!被迫離開!');
+                    window.location.href = '/ChineseChess/lobby';
                 } else if (data.type === 'GAME_OVER') {
                     showGameOver(data.winner, data.reason, data.loser);
+                } else if (data.type === 'REDIRECT_TO_LOBBY') {
+                    // 伺服器通知：對方離線，對局結束，3 秒後自動返回大廳
+                    console.log('收到 REDIRECT_TO_LOBBY，3 秒後返回大廳...');
+                    setTimeout(() => {
+                        window.location.href = '/ChineseChess/lobby';
+                    }, 3000);
                 } else if (data.type === 'MOVE_INVALID') {
                     alert(data.message);
                 }

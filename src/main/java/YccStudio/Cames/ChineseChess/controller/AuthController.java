@@ -33,13 +33,9 @@ public class AuthController {
         
         if (userOpt.isPresent()) {
             User user = userOpt.get();
-            // Generate new session ID to prevent multi-device login
-            String newSessionId = UUID.randomUUID().toString();
-            user.setSessionId(newSessionId);
-            // Note: authService.save(user) should be called here if needed
             
             return ResponseEntity.ok(Map.of(
-                "sessionId", newSessionId,
+                "sessionId", user.getSessionId(),
                 "name", user.getName(),
                 "message", "Login successful"
             ));

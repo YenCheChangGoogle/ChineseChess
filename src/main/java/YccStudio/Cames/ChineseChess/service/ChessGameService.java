@@ -28,18 +28,18 @@ public class ChessGameService {
         int[][] board = new int[ROWS][COLS];
 
         // Red Side (Bottom - Positive)
-        // Row 9: Rook, Horse, Elephant, Advisor, General, Advisor, Elephant, Horse, Rook
-        board[9][0] = 1; board[9][8] = 1; // Rook
-        board[9][1] = 2; board[9][7] = 2; // Horse
-        board[9][2] = 3; board[9][6] = 3; // Elephant
-        board[9][3] = 4; board[9][5] = 4; // Advisor
-        board[9][4] = 5;                  // General
+        // Row 9: 俥, 傌, 相, 仕, 帥, 仕, 相, 傌, 俥
+        board[9][0] = 1; board[9][8] = 1; // 俥 (Rook)
+        board[9][1] = 2; board[9][7] = 2; // 傌 (Horse)
+        board[9][2] = 3; board[9][6] = 3; // 相 (Elephant)
+        board[9][3] = 4; board[9][5] = 4; // 仕 (Advisor)
+        board[9][4] = 5;                  // 帥 (General)
         
-        // Row 7: Cannon (Columns 1 and 7)
-        board[7][1] = 6; board[7][7] = 6; // Cannon
+        // Row 7: 炮 (Columns 1 and 7)
+        board[7][1] = 6; board[7][7] = 6; // 炮 (Cannon)
         
-        // Row 6: Soldiers (Columns 0, 2, 4, 6, 8)
-        for(int i=0; i<9; i+=2) board[6][i] = 7; // Soldiers
+        // Row 6: 兵 (Columns 0, 2, 4, 6, 8)
+        for(int i=0; i<9; i+=2) board[6][i] = 7; // 兵 (Soldiers)
 
         // Black Side (Top - Negative)
         // Row 0: Rook, Horse, Elephant, Advisor, General, Advisor, Elephant, Horse, Rook

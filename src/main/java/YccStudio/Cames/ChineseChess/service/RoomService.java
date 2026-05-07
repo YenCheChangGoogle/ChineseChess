@@ -73,6 +73,27 @@ public class RoomService {
         return wasPlaying ? roomId : null; // Return roomId if a game was interrupted
     }
 
+    public void clearRoomPlayers(String roomId) {
+        Room room = rooms.get(roomId);
+        if (room == null || room.getPlayers() == null) return;
+        
+        // 將房間中所有玩家從 userToRoom 中移除
+        for (String player : room.getPlayers()) {
+            userToRoom.remove(player);
+        }
+        room.getPlayers().clear();
+        room.setStatus("WAITING");
+    }
+
+    public void deleteRoom(String roomId) {
+        Room room = rooms.remove(roomId);
+        if (room != null && room.getPlayers() != null) {
+            for (String player : room.getPlayers()) {
+                userToRoom.remove(player);
+            }
+        }
+    }
+
     public String getRoomIdByUsername(String username) {
         return userToRoom.get(username);
     }
