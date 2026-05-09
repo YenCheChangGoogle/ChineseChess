@@ -7,6 +7,10 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
@@ -30,6 +34,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, String> sessionToUser = new ConcurrentHashMap<>();
     private final Map<String, Set<WebSocketSession>> roomSessions = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(3);
 
     public GameWebSocketHandler(ChessGameService chessGameService, RoomService roomService) {
         this.chessGameService = chessGameService;
@@ -61,25 +66,20 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             session.sendMessage(new TextMessage("系統錯誤: " + e.getMessage()));
         }
     }
-
+    
     private void handleJoin(WebSocketSession session, Map<String, Object> data) throws IOException {
+    	boolean toReset=false;
+    	
         String roomId = (String) data.get("roomId");
         String username = (String) data.get("username");
         
+        // 標記為線上
+        roomService.markOnline(username);
+        
         Room room = roomService.getRoom(roomId);
         
-        // 如果房間狀態為 WAITING 且沒有玩家（代表上一局因對方離線而結束），
-        // 告知該玩家上一局輸了，並通知前端跳回大廳
-        if (room != null && "WAITING".equals(room.getStatus()) && 
-            (room.getPlayers() == null || room.getPlayers().isEmpty())) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("type", "GAME_LOST_REDIRECT");
-            response.put("reason", "對方已在上一局中勝利，請返回大廳重新對戰");
-            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
-            return;
-        }
-        
-        int playerCountBeforeJoin = room != null && room.getPlayers() != null ? room.getPlayers().size() : 0;
+        // 房間人數兩個人 表示對戰開始 需要重設棋盤
+        if(room.getPlayers().size()==2) toReset=true;
         
         sessionToUser.put(session.getId(), username);
         roomService.joinRoom(roomId, username);
@@ -88,13 +88,12 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         roomSessions.computeIfAbsent(roomId, k -> Collections.synchronizedSet(new HashSet<>())).add(session);
         
         Room updatedRoom = roomService.getRoom(roomId);
-        int playerCountAfterJoin = updatedRoom != null && updatedRoom.getPlayers() != null ? updatedRoom.getPlayers().size() : 0;
         
         int color = roomService.getPlayerColor(username);
         
-        // 【新邏輯】當第二名玩家加入時，房間從 WAITING 變為 PLAYING，棋盤歸位
-        if (playerCountBeforeJoin < 2 && playerCountAfterJoin >= 2) {
-            chessGameService.createGame(roomId); // 重置棋盤
+        // 重置
+        if (toReset) {
+            chessGameService.createGame(roomId);
         }
         
         int currentTurn = chessGameService.getCurrentTurn(roomId);
@@ -116,7 +115,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         }
         
         // 回傳對手帳號（若已有對手）
-        if (updatedRoom.getPlayers() != null && updatedRoom.getPlayers().size() >= 2) {
+        if (updatedRoom.getPlayers() != null && updatedRoom.getPlayers().size() == 2) {
             for (String player : updatedRoom.getPlayers()) {
                 if (!player.equals(username)) {
                     response.put("opponent", player);
@@ -129,11 +128,12 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
 
         broadcastToRoom(roomId, "{\"type\":\"PLAYER_JOINED\", \"user\":\"" + username + "\"}");
         
-        // 【新邏輯】當第二名玩家加入時，廣播 GAME_START_RESET 讓雙方看到「對手就位」提示
-        if (playerCountBeforeJoin < 2 && playerCountAfterJoin >= 2) {
+        // 【修正】當第二名玩家加入時，廣播 GAME_START_RESET
+        if (toReset) {
             Map<String, Object> resetMsg = new HashMap<>();
             resetMsg.put("type", "GAME_START_RESET");
-            // 將雙方玩家列表一併廣播，讓前端可以找出對手名稱
+            resetMsg.put("board", chessGameService.getBoard(roomId));
+            resetMsg.put("currentTurn", chessGameService.getCurrentTurn(roomId));
             if (updatedRoom.getPlayers() != null) {
                 resetMsg.put("players", updatedRoom.getPlayers());
             }
@@ -143,7 +143,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         if ("PLAYING".equals(roomService.getRoom(roomId).getStatus())) {
             Map<String, Object> gameStarted = new HashMap<>();
             gameStarted.put("type", "GAME_STARTED");
-            // 將雙方玩家列表一併廣播，讓前端可以找出對手名稱
+            gameStarted.put("board", chessGameService.getBoard(roomId));
             if (updatedRoom.getPlayers() != null) {
                 gameStarted.put("players", updatedRoom.getPlayers());
             }
@@ -174,22 +174,29 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         boolean isPracticeMode = (room != null && "WAITING".equals(room.getStatus()));
 
         // 【單人練習模式】若房間狀態為 WAITING（只有一人），允許自由移動任何棋子
+        // 但必須遵守象棋規則（isValidMove），不限制輪次
         if (isPracticeMode) {
             if (startRow >= 0 && startRow < 10 && startCol >= 0 && startCol < 9 &&
                 endRow >= 0 && endRow < 10 && endCol >= 0 && endCol < 9) {
-                chessGameService.movePiece(roomId, startRow, startCol, endRow, endCol);
-                
-                // Broadcast the move and the new board state
-                Map<String, Object> moveData = new HashMap<>();
-                moveData.put("type", "MOVE_MADE");
-                moveData.put("startRow", startRow);
-                moveData.put("startCol", startCol);
-                moveData.put("endRow", endRow);
-                moveData.put("endCol", endCol);
-                moveData.put("user", username);
-                moveData.put("board", chessGameService.getBoard(roomId));
-                
-                broadcastToRoom(roomId, objectMapper.writeValueAsString(moveData));
+                // 練習模式下用玩家自己的顏色做規則驗證，不檢查輪次
+                if (chessGameService.isValidMove(roomId, startRow, startCol, endRow, endCol, color)) {
+                    chessGameService.movePiece(roomId, startRow, startCol, endRow, endCol);
+                    
+                    // Broadcast the move and the new board state
+                    Map<String, Object> moveData = new HashMap<>();
+                    moveData.put("type", "MOVE_MADE");
+                    moveData.put("startRow", startRow);
+                    moveData.put("startCol", startCol);
+                    moveData.put("endRow", endRow);
+                    moveData.put("endCol", endCol);
+                    moveData.put("user", username);
+                    moveData.put("board", chessGameService.getBoard(roomId));
+                    
+                    broadcastToRoom(roomId, objectMapper.writeValueAsString(moveData));
+                } else {
+                    String reason = chessGameService.getMoveInvalidReason(roomId, startRow, startCol, endRow, endCol, color);
+                    session.sendMessage(new TextMessage("{\"type\":\"MOVE_INVALID\", \"message\":\"" + (reason != null ? reason : "此走法不符合象棋規則") + "\"}"));
+                }
             }
             return;
         }
@@ -378,6 +385,11 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         String user = sessionToUser.remove(session.getId());
         sessions.remove(session.getId());
         
+        // 標記為離線
+        if (user != null) {
+            roomService.markOffline(user);
+        }
+        
         if (user != null) {
             String roomId = roomService.getRoomIdByUsername(user);
             if (roomId != null) {
@@ -408,10 +420,16 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                     }
                 }
 
-                // Handle game interruption
+                // Handle game interruption or room empty
                 String interruptedRoomId = roomService.leaveRoom(user);
                 if (interruptedRoomId != null) {
-                    handleGameInterruption(interruptedRoomId, user, winnerUsername, winnerColor);
+                    // 【修改】任何一方離開房間（視為認輸），立即將棋盤歸位重置
+                    chessGameService.createGame(interruptedRoomId);
+                    
+                    if (winnerUsername != null) {
+                        // 遊戲中斷，通知勝利方對手離線認輸
+                        handleGameInterruption(interruptedRoomId, user, winnerUsername, winnerColor);
+                    }
                 }
             }
         }
@@ -420,8 +438,8 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private void handleGameInterruption(String roomId, String loserUsername, String winnerUsername, int winnerColor) {
         if (winnerUsername == null) return; // No one left to win
 
-        // 通知仍在房間的勝利方：對手離線，你獲勝，並自動返回大廳
-        broadcastToRoom(roomId, "{\"type\":\"GAME_OVER\", \"winner\":" + winnerColor + ", \"reason\":\"對方擅自離開房間，您獲得勝利！\", \"loser\":\"" + loserUsername + "\"}");
+        // 通知仍在房間的勝利方：對手離線認輸，您獲得勝利，並自動返回大廳
+        broadcastToRoom(roomId, "{\"type\":\"GAME_OVER\", \"winner\":" + winnerColor + ", \"reason\":\"對手擅自離開房間（視同認輸），您獲得勝利！\", \"loser\":\"" + loserUsername + "\"}");
         
         // 通知勝利方 3 秒後自動跳轉回大廳
         broadcastToRoom(roomId, "{\"type\":\"REDIRECT_TO_LOBBY\"}");

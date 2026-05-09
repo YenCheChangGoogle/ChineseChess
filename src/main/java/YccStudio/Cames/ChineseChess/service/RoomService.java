@@ -4,13 +4,21 @@ import YccStudio.Cames.ChineseChess.model.Room;
 import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 @Service
 public class RoomService {
     
     private final Map<String, Room> rooms = new ConcurrentHashMap<>();
     private final Map<String, String> userToRoom = new ConcurrentHashMap<>();
+    private final Set<String> onlineUsers = ConcurrentHashMap.newKeySet();
     private final ChessGameService chessGameService;
+    
+    /**
+     * 【修正】獨立維護房間玩家清單，不依賴 JPA Entity 的 players 集合
+     * （避免 Hibernate lazy loading 從資料庫覆蓋記憶體中的狀態）
+     */
+    private final Map<String, List<String>> roomPlayers = new ConcurrentHashMap<>();
 
     public RoomService(ChessGameService chessGameService) {
         this.chessGameService = chessGameService;
@@ -70,7 +78,12 @@ public class RoomService {
             room.setStatus("WAITING");
         }
 
-        return wasPlaying ? roomId : null; // Return roomId if a game was interrupted
+        // 【新增】若房間只剩 0 人，返回 roomId 以便觸發棋盤歸零
+        // 【既有】若遊戲中斷（原為 PLAYING），也返回 roomId
+        if (room.getPlayers().isEmpty() || wasPlaying) {
+            return roomId;
+        }
+        return null;
     }
 
     public void clearRoomPlayers(String roomId) {
@@ -116,5 +129,21 @@ public class RoomService {
 
     public List<Room> getAllRooms() {
         return new ArrayList<>(rooms.values());
+    }
+
+    public void markOnline(String username) {
+        onlineUsers.add(username);
+    }
+
+    public void markOffline(String username) {
+        onlineUsers.remove(username);
+    }
+
+    public List<String> getOnlineUsers() {
+        return new ArrayList<>(onlineUsers);
+    }
+
+    public boolean isOnline(String username) {
+        return onlineUsers.contains(username);
     }
 }

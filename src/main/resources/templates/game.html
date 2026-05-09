@@ -251,21 +251,32 @@
                     <line x1="0" y1="640" x2="640" y2="640" stroke="#5d4037" stroke-width="2" />
                     <line x1="0" y1="720" x2="640" y2="720" stroke="#5d4037" stroke-width="2" />
                     
-                    <!-- Vertical Lines -->
-                    <line x1="0" y1="0" x2="0" y2="720" stroke="#5d4037" stroke-width="2" />
-                    <line x1="80" y1="0" x2="80" y2="720" stroke="#5d4037" stroke-width="2" />
-                    <line x1="160" y1="0" x2="160" y2="720" stroke="#5d4037" stroke-width="2" />
-                    <line x1="240" y1="0" x2="240" y2="720" stroke="#5d4037" stroke-width="2" />
-                    <line x1="320" y1="0" x2="320" y2="720" stroke="#5d4037" stroke-width="2" />
-                    <line x1="400" y1="0" x2="400" y2="720" stroke="#5d4037" stroke-width="2" />
-                    <line x1="480" y1="0" x2="480" y2="720" stroke="#5d4037" stroke-width="2" />
-                    <line x1="560" y1="0" x2="560" y2="720" stroke="#5d4037" stroke-width="2" />
-                    <line x1="640" y1="0" x2="640" y2="720" stroke="#5d4037" stroke-width="2" />
+                    <!-- Vertical Lines (上段 0→320) -->
+                    <line x1="0" y1="0" x2="0" y2="320" stroke="#5d4037" stroke-width="2" />
+                    <line x1="80" y1="0" x2="80" y2="320" stroke="#5d4037" stroke-width="2" />
+                    <line x1="160" y1="0" x2="160" y2="320" stroke="#5d4037" stroke-width="2" />
+                    <line x1="240" y1="0" x2="240" y2="320" stroke="#5d4037" stroke-width="2" />
+                    <line x1="320" y1="0" x2="320" y2="320" stroke="#5d4037" stroke-width="2" />
+                    <line x1="400" y1="0" x2="400" y2="320" stroke="#5d4037" stroke-width="2" />
+                    <line x1="480" y1="0" x2="480" y2="320" stroke="#5d4037" stroke-width="2" />
+                    <line x1="560" y1="0" x2="560" y2="320" stroke="#5d4037" stroke-width="2" />
+                    <line x1="640" y1="0" x2="640" y2="320" stroke="#5d4037" stroke-width="2" />
+
+                    <!-- Vertical Lines (下段 400→720) -->
+                    <line x1="0" y1="400" x2="0" y2="720" stroke="#5d4037" stroke-width="2" />
+                    <line x1="80" y1="400" x2="80" y2="720" stroke="#5d4037" stroke-width="2" />
+                    <line x1="160" y1="400" x2="160" y2="720" stroke="#5d4037" stroke-width="2" />
+                    <line x1="240" y1="400" x2="240" y2="720" stroke="#5d4037" stroke-width="2" />
+                    <line x1="320" y1="400" x2="320" y2="720" stroke="#5d4037" stroke-width="2" />
+                    <line x1="400" y1="400" x2="400" y2="720" stroke="#5d4037" stroke-width="2" />
+                    <line x1="480" y1="400" x2="480" y2="720" stroke="#5d4037" stroke-width="2" />
+                    <line x1="560" y1="400" x2="560" y2="720" stroke="#5d4037" stroke-width="2" />
+                    <line x1="640" y1="400" x2="640" y2="720" stroke="#5d4037" stroke-width="2" />
                     
                     <!-- River -->
-                    <rect x="0" y="320" width="640" height="80" fill="rgba(210, 180, 140, 0.3)" stroke="rgba(93, 64, 55, 0.5)" stroke-width="2" />
-                    <text style="transform-origin: center;transform: rotate(180deg) translateX(317px);" x="160" y="378" font-family="Kaiti, STKaiti" font-size="68" fill="#5d4037" font-weight="bold" text-anchor="middle">漢 界</text>
-                    <text x="480" y="378" font-family="Kaiti, STKaiti" font-size="68" fill="#5d4037" font-weight="bold" text-anchor="middle">楚 河</text>
+                    <rect x="0" y="320" width="640" height="80" fill="rgba(180, 160, 130, 0.15)" stroke="rgba(93, 64, 55, 0.25)" stroke-width="1" />
+                    <text style="transform-origin: center;transform: rotate(180deg) translateX(317px);" x="160" y="378" font-family="Kaiti, STKaiti" font-size="68" fill="rgba(64, 164, 223)" font-weight="bold" text-anchor="middle">漢 界</text>
+                    <text x="480" y="378" font-family="Kaiti, STKaiti" font-size="68" fill="rgba(64, 164, 223)" font-weight="bold" text-anchor="middle">楚 河</text>
                     
                     <!-- Palaces -->
                     <line x1="240" y1="0" x2="400" y2="160" stroke="#5d4037" stroke-width="2" />
@@ -322,6 +333,37 @@
         let myColor = 0; // 1: Red, -1: Black
         let boardState = [];
         let playNowTimer = null;
+        let gameStarted = false; // 標記對戰是否已開始（用於防止 onopen 的 setTimeout 覆蓋倒數訊息）
+
+        /**
+         * 倒數流程：「開始對戰 3」→「開始對戰 2」→「開始對戰 1」→「開始對戰」→「輪到誰操作」
+         * 注意：「👤 玩家 XXX 加入對戰」由 GAME_START_RESET 立即顯示，此函數處理後續倒數
+         */
+        function countdownGameStart(statusBar, initData) {
+            statusBar.style.background = '#e67e22';
+            
+            setTimeout(() => {
+                statusBar.innerText = '開始對戰 3';
+            }, 1000);
+            
+            setTimeout(() => {
+                statusBar.innerText = '開始對戰 2';
+            }, 2000);
+            
+            setTimeout(() => {
+                statusBar.innerText = '開始對戰 1';
+            }, 3000);
+            
+            setTimeout(() => {
+                statusBar.innerText = '開始對戰';
+            }, 4000);
+            
+            setTimeout(() => {
+                statusBar.style.background = '#f1c40f';
+                // 倒數結束，顯示目前輪到誰操作
+                updateTurnStatus(initData.currentTurn || 1);
+            }, 5000);
+        }
 
         /**
          * 顯示「請對戰」動態提示，3 秒後自動消失。
@@ -451,6 +493,7 @@
         }
 
         function updateTurnStatus(turn) {
+
             const statusText = turn === 1 ? '🔴 目前輪到 紅方 操作' : '⚫ 目前輪到 黑方 操作';
             document.getElementById('status-bar').innerText = statusText;
             document.getElementById('check-alert').style.display = 'none';
@@ -461,7 +504,17 @@
             socket = new WebSocket(`ws://${window.location.host}/ChineseChess/game-ws`);
 
             socket.onopen = () => {
-                document.getElementById('status-bar').innerText = '連線成功，正在加入房間...';
+                const statusBar = document.getElementById('status-bar');
+                statusBar.innerText = '連線成功';
+                statusBar.style.background = '#2ecc71';
+                setTimeout(() => {
+                    // 只有在對戰尚未開始時才更新狀態列，避免覆蓋倒數訊息
+                    if (!gameStarted) {
+                        statusBar.style.background = '#f1c40f';
+                        statusBar.innerText = '連線成功，進入棋房';
+                    }
+                }, 2000);
+                
                 socket.send(JSON.stringify({
                     type: 'JOIN',
                     roomId: roomId,
@@ -479,14 +532,12 @@
                     
                     document.getElementById('role-card').className = 'info-card ' + (myColor === 1 ? 'info-card-red' : (myColor === -1 ? 'info-card-black' : 'info-card'));
                     
-                    
-                    document.getElementById('status-bar').innerText = `對局準備就緒`;
                     document.getElementById('my-role').innerText = colorText + ' - ' + username;
                     document.getElementById('room-id-display').innerText = roomId;
                     
                     // 顯示對手狀態：若伺服器回傳 opponent 則顯示帳號，否則判斷遊戲狀態
                     if (data.opponent) {
-                        document.getElementById('opponent-status').innerText = '對戰⚔️ ' + data.opponent;
+                        document.getElementById('opponent-status').innerText = '⚔️ ' + data.opponent;
                     } else if (myColor !== 1 || data.gameState === 'PLAYING') {
                         document.getElementById('opponent-status').innerText = '對戰中';
                     } else {
@@ -498,7 +549,7 @@
                         document.getElementById('board-wrapper').classList.add('flipped');
                     }
                     
-                    if (data.currentTurn) {
+                    if (myColor !== 1 || data.gameState === 'PLAYING') {
                         updateTurnStatus(data.currentTurn);
                     }
                     
@@ -508,8 +559,7 @@
                         socket.send(JSON.stringify({ type: 'SYNC' }));
                     }
                 } else if (data.type === 'GAME_LOST_REDIRECT') {
-                    /* 【修正】此訊息表示上一局因對方離線而結束
-                     * 直接跳回大廳，不顯示「敗北」畫面 */
+                    /* 【修正】此訊息表示上一局因對方離線而結束 直接跳回大廳，不顯示「敗北」畫面 */
                     console.log('收到 GAME_LOST_REDIRECT，直接返回大廳...');
                     window.location.href = '/ChineseChess/lobby';
                 } else if (data.type === 'RESIGN_REJECT') {
@@ -519,22 +569,28 @@
                 } else if (data.type === 'BOARD_SYNC') {
                     renderBoard(data.board);
                 } else if (data.type === 'PLAYER_JOINED') {
-                    // 有人加入房間，顯示對方帳號
+                    // 有人加入房間，顯示對方帳號（狀態列由 GAME_START_RESET 統一處理倒數流程）
                     if (data.user !== username) {
                         document.getElementById('opponent-status').innerText = '⚔️ ' + data.user;
                     }
-                    // Turn status is already set by JOIN_SUCCESS or TURN_CHANGED
                 } else if (data.type === 'GAME_STARTED') {
                     // 從 players 列表中找出對手名稱
                     if (data.players && data.players.length >= 2) {
                         const opponent = data.players.find(p => p !== username);
                         if (opponent) {
-                            document.getElementById('opponent-status').innerText = '對戰⚔️ ' + opponent;
+                            document.getElementById('opponent-status').innerText = '⚔️ ' + opponent;
                         } else {
                             document.getElementById('opponent-status').innerText = '對戰中';
                         }
-                    } else {
-                        document.getElementById('opponent-status').innerText = '對戰中';
+                    } 
+                    
+                    //else {
+                    //    document.getElementById('opponent-status').innerText = '對戰中';
+                    //}
+                    
+                    // 強制同步棋盤，確保歸位
+                    if (data.board) {
+                        renderBoard(data.board);
                     }
                 } else if (data.type === 'MOVE_MADE') {
                     if (data.board) {
@@ -550,40 +606,64 @@
                 } else if (data.type === 'CHECK') {
                     document.getElementById('check-alert').style.display = 'block';
                 } else if (data.type === 'GAME_START_RESET') {
-                    /* 【新邏輯】對手就位，棋盤歸位，顯示提示 1 秒後消失 */
+                    /* 【修改】對手就位，棋盤歸位，顯示加入訊息→倒數3秒→開始對戰 */
+                    console.log('對手就位，棋盤歸位，顯示加入訊息→倒數3秒→開始對戰');
+                    
+                    // 標記對戰已啟動，防止 onopen 的 setTimeout 覆蓋狀態列
+                    gameStarted = true;
+                    
                     const statusBar = document.getElementById('status-bar');
-                    statusBar.innerText = '⚔️ 對手就位 對戰開始 ⚔️';
                     statusBar.style.background = '#2ecc71';
-                    setTimeout(() => {
-                        statusBar.style.background = '#f1c40f';
-                        statusBar.innerText = '對局準備就緒';
-                    }, 1000);
+                    
                     // 從 players 列表中找出對手名稱
+                    let opponentName = null;
                     if (data.players && data.players.length >= 2) {
-                        const opponent = data.players.find(p => p !== username);
-                        if (opponent) {
-                            document.getElementById('opponent-status').innerText = '⚔️ ' + opponent;
+                        opponentName = data.players.find(p => p !== username);
+                        if (opponentName) {
+                            document.getElementById('opponent-status').innerText = '⚔️ ' + opponentName;
                         }
                     }
-                    // 重新同步棋盤
-                    socket.send(JSON.stringify({ type: 'SYNC' }));
+                    
+                    // 清除選中狀態，確保重置乾淨
+                    selectedCell = null;
+                    // 直接渲染伺服器推送的重置棋盤
+                    if (data.board) {
+                        renderBoard(data.board);
+                    }
+                    
+                    // 第 1 秒：顯示「玩家XXX加入對戰」
+                    if (opponentName) {
+                        statusBar.innerText = '👤 玩家 ' + opponentName + ' 加入對戰';
+                    } else {
+                        statusBar.innerText = '⚔️ 對手已加入！';
+                    }
+                    
+                    // 1 秒後開始倒數
+                    setTimeout(() => {
+                        countdownGameStart(statusBar, data);
+                    }, 1000);
                 } else if (data.type === 'ROOM_CLOSED_BY_ADMIN') {
                     /* 【修正】管理員強制關閉房間 */
+                    console.log('管理員強制關閉房間');
                     alert(data.message || '管理者強制關閉房間!被迫離開!');
                     window.location.href = '/ChineseChess/lobby';
                 } else if (data.type === 'ROOM_DELETED_BY_ADMIN') {
                     /* 【新邏輯】管理員強制刪除房間 */
+                    console.log('管理員強制刪除房間');
                     alert(data.message || '管理者強制刪除房間!被迫離開!');
                     window.location.href = '/ChineseChess/lobby';
                 } else if (data.type === 'GAME_OVER') {
+                	console.log('GAME_OVER');
                     showGameOver(data.winner, data.reason, data.loser);
                 } else if (data.type === 'REDIRECT_TO_LOBBY') {
                     // 伺服器通知：對方離線，對局結束，3 秒後自動返回大廳
-                    console.log('收到 REDIRECT_TO_LOBBY，3 秒後返回大廳...');
+                    console.log('');
+                    console.log('收到 REDIRECT_TO_LOBBY，3 秒後返回大廳');
                     setTimeout(() => {
                         window.location.href = '/ChineseChess/lobby';
                     }, 3000);
                 } else if (data.type === 'MOVE_INVALID') {
+                	console.log('MOVE_INVALID');
                     alert(data.message);
                 }
             };

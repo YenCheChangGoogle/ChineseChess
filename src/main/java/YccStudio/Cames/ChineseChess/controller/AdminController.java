@@ -30,8 +30,10 @@ public class AdminController {
 
     @GetMapping("/online-users")
     public List<User> getOnlineUsers() {
+        // 改用 RoomService 的 WebSocket 記憶體追蹤，只回傳真正有連線的使用者
+        List<String> onlineUsernames = roomService.getOnlineUsers();
         return userRepository.findAll().stream()
-                .filter(u -> u.getSessionId() != null)
+                .filter(u -> onlineUsernames.contains(u.getUsername()))
                 .collect(Collectors.toList());
     }
 
