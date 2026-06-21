@@ -98,4 +98,17 @@ public class AdminController {
             return ResponseEntity.internalServerError().body(Map.of("message", "刪除失敗: " + e.getMessage()));
         }
     }
+
+    @PostMapping("/rooms/create-ai")
+    public ResponseEntity<?> createAIRoom(
+            @RequestParam String username,
+            @RequestParam int color,
+            @RequestParam String difficulty) {
+        try {
+            Room room = roomService.createAIRoom(username, color, difficulty);
+            return ResponseEntity.ok(room);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("message", "AI 房間建立失敗: " + e.getMessage()));
+        }
+    }
 }

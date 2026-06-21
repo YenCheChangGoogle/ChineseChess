@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import org.springframework.stereotype.Component;
@@ -21,12 +22,14 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import YccStudio.Cames.ChineseChess.model.Room;
+import YccStudio.Cames.ChineseChess.service.ChessAIService;
 import YccStudio.Cames.ChineseChess.service.ChessGameService;
 import YccStudio.Cames.ChineseChess.service.RoomService;
 
 @Component
 public class GameWebSocketHandler extends TextWebSocketHandler {
 
+    private final ChessAIService chessAIService;
     private final ChessGameService chessGameService;
     private final RoomService roomService;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -36,7 +39,8 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private final Map<String, Set<WebSocketSession>> roomSessions = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(3);
 
-    public GameWebSocketHandler(ChessGameService chessGameService, RoomService roomService) {
+    public GameWebSocketHandler(ChessAIService chessAIService, ChessGameService chessGameService, RoomService roomService) {
+        this.chessAIService = chessAIService;
         this.chessGameService = chessGameService;
         this.roomService = roomService;
     }
@@ -252,6 +256,86 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 checkData.put("type", "CHECK");
                 broadcastToRoom(roomId, objectMapper.writeValueAsString(checkData));
             }
+
+            // ==================== AI 走子邏輯 ====================
+            if (roomService.isAIRoom(roomId)) {
+                int aiTurn = chessGameService.getCurrentTurn(roomId);
+                String aiDifficulty = roomService.getAiDifficulty(roomId);
+
+                // 通知前端：AI 思考中
+                Map<String, Object> thinkingData = new HashMap<>();
+                thinkingData.put("type", "AI_THINKING");
+                broadcastToRoom(roomId, objectMapper.writeValueAsString(thinkingData));
+
+                // AI 隨機延遲 500-1000ms 模擬人類節奏
+                long delay = ThreadLocalRandom.current().nextLong(500, 1001);
+
+                scheduler.schedule(() -> {
+                    try {
+                        ChessAIService.Move aiMove = chessAIService.getBestMove(roomId, aiTurn, aiDifficulty);
+                        if (aiMove != null) {
+                            // 執行 AI 走子
+                            chessGameService.movePiece(roomId, aiMove.startRow(), aiMove.startCol(), aiMove.endRow(), aiMove.endCol());
+                            chessGameService.switchTurn(roomId);
+
+                            // 廣播 AI 走子
+                            Map<String, Object> aiMoveData = new HashMap<>();
+                            aiMoveData.put("type", "MOVE_MADE");
+                            aiMoveData.put("startRow", aiMove.startRow());
+                            aiMoveData.put("startCol", aiMove.startCol());
+                            aiMoveData.put("endRow", aiMove.endRow());
+                            aiMoveData.put("endCol", aiMove.endCol());
+                            aiMoveData.put("user", "AI");
+                            aiMoveData.put("board", chessGameService.getBoard(roomId));
+                            broadcastToRoom(roomId, objectMapper.writeValueAsString(aiMoveData));
+
+                            // 廣播輪次改變
+                            Map<String, Object> aiTurnData = new HashMap<>();
+                            aiTurnData.put("type", "TURN_CHANGED");
+                            aiTurnData.put("nextTurn", chessGameService.getCurrentTurn(roomId));
+                            broadcastToRoom(roomId, objectMapper.writeValueAsString(aiTurnData));
+
+                            // AI 走後檢查 Game Over
+                            int aiWinner = chessGameService.checkGameOver(roomId);
+                            if (aiWinner != 0) {
+                                Map<String, Object> gameOverData = new HashMap<>();
+                                gameOverData.put("type", "GAME_OVER");
+                                gameOverData.put("winner", aiWinner);
+                                gameOverData.put("reason", (aiWinner == 1) ? "紅方獲勝" : "黑方獲勝");
+                                broadcastToRoom(roomId, objectMapper.writeValueAsString(gameOverData));
+                                resetAndSyncGame(roomId);
+                                return;
+                            }
+
+                            // AI 走後檢查是否將軍
+                            int nextTurn = chessGameService.getCurrentTurn(roomId);
+                            if (chessGameService.isGeneralUnderAttack(roomId, nextTurn)) {
+                                Map<String, Object> aiCheckData = new HashMap<>();
+                                aiCheckData.put("type", "CHECK");
+                                broadcastToRoom(roomId, objectMapper.writeValueAsString(aiCheckData));
+                            }
+                        } else {
+                            // AI 找不到走法（無路可走），玩家獲勝
+                            Map<String, Object> gameOverData = new HashMap<>();
+                            gameOverData.put("type", "GAME_OVER");
+                            gameOverData.put("winner", -aiTurn);
+                            gameOverData.put("reason", (aiTurn == 1) ? "黑方獲勝 (AI 無路可走)" : "紅方獲勝 (AI 無路可走)");
+                            try {
+                                broadcastToRoom(roomId, objectMapper.writeValueAsString(gameOverData));
+                            } catch (Exception ex) { /* ignore */ }
+                            resetAndSyncGame(roomId);
+                        }
+                    } catch (Exception e) {
+                        Map<String, Object> errorData = new HashMap<>();
+                        errorData.put("type", "AI_ERROR");
+                        errorData.put("message", "AI 計算走法時發生錯誤: " + e.getMessage());
+                        try {
+                            broadcastToRoom(roomId, objectMapper.writeValueAsString(errorData));
+                        } catch (Exception ex) { /* ignore */ }
+                    }
+                }, delay, TimeUnit.MILLISECONDS);
+            }
+            // ====================================================
         } else {
             String reason = chessGameService.getMoveInvalidReason(roomId, startRow, startCol, endRow, endCol, color);
             session.sendMessage(new TextMessage("{\"type\":\"MOVE_INVALID\", \"message\":\"" + (reason != null ? reason : "此走法不符合象棋規則") + "\"}"));

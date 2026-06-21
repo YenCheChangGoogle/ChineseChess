@@ -146,4 +146,57 @@ public class RoomService {
     public boolean isOnline(String username) {
         return onlineUsers.contains(username);
     }
+
+    /**
+     * 建立 AI 對戰房間
+     * @param username 玩家帳號
+     * @param playerColor 玩家選擇的顏色 (1=紅, -1=黑)
+     * @param difficulty AI 難度 (easy, normal, hard)
+     */
+    public Room createAIRoom(String username, int playerColor, String difficulty) {
+        String roomId = UUID.randomUUID().toString().substring(0, 8);
+        Room room = new Room();
+        room.setRoomId(roomId);
+        room.setOwner(username);
+        room.setStatus("PLAYING");
+        room.setAI(true);
+        room.setAiDifficulty(difficulty);
+
+        // 玩家選紅則玩家在 index 0, AI 在 index 1
+        // 玩家選黑則 AI 在 index 0 (代表紅), 玩家在 index 1
+        List<String> players = new ArrayList<>();
+        if (playerColor == 1) {
+            players.add(username);
+            players.add("AI");
+        } else {
+            players.add("AI");
+            players.add(username);
+        }
+        room.setPlayers(players);
+
+        rooms.put(roomId, room);
+        userToRoom.put(username, roomId);
+
+        // 初始化棋盤遊戲
+        chessGameService.createGame(roomId);
+
+        return room;
+    }
+
+    /**
+     * 判斷該房間是否為 AI 對戰房間
+     */
+    public boolean isAIRoom(String roomId) {
+        Room room = rooms.get(roomId);
+        return room != null && room.isAI();
+    }
+
+    /**
+     * 獲取指定房間的 AI 難度
+     */
+    public String getAiDifficulty(String roomId) {
+        Room room = rooms.get(roomId);
+        return (room != null) ? room.getAiDifficulty() : "normal";
+    }
 }
+

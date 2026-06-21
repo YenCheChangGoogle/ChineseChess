@@ -18,6 +18,10 @@ public class Room {
     @Column(name = "username")
     private List<String> players = new ArrayList<>();
 
+    // AI 對戰相關欄位
+    private boolean isAI = false;
+    private String aiDifficulty = "normal"; // easy, normal, hard
+
     public Room() {}
 
     public Room(String roomId, String owner, String status, List<String> players) {
@@ -38,4 +42,10 @@ public class Room {
 
     public List<String> getPlayers() { return players; }
     public void setPlayers(List<String> players) { this.players = players; }
+
+    // AI 欄位 Getter / Setter
+    public boolean isAI() { return isAI; }
+    public void setAI(boolean AI) { isAI = AI; }
+    public String getAiDifficulty() { return aiDifficulty; }
+    public void setAiDifficulty(String aiDifficulty) { this.aiDifficulty = aiDifficulty; }
 }

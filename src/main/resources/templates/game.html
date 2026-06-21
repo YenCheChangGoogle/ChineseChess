@@ -327,6 +327,7 @@
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const roomId = urlParams.get('roomId');
+        const isAIRoom = urlParams.get('isAI') === 'true';
         const username = localStorage.getItem('username');
         let socket;
         let selectedCell = null;
@@ -569,16 +570,17 @@
                 } else if (data.type === 'BOARD_SYNC') {
                     renderBoard(data.board);
                 } else if (data.type === 'PLAYER_JOINED') {
-                    // 有人加入房間，顯示對方帳號（狀態列由 GAME_START_RESET 統一處理倒數流程）
+                    // 有人加入房間，顯示對方帳號
                     if (data.user !== username) {
-                        document.getElementById('opponent-status').innerText = '⚔️ ' + data.user;
+                        const opponentName = isAIRoom ? '🤖 AI' : ('⚔️ ' + data.user);
+                        document.getElementById('opponent-status').innerText = opponentName;
                     }
                 } else if (data.type === 'GAME_STARTED') {
                     // 從 players 列表中找出對手名稱
                     if (data.players && data.players.length >= 2) {
                         const opponent = data.players.find(p => p !== username);
                         if (opponent) {
-                            document.getElementById('opponent-status').innerText = '⚔️ ' + opponent;
+                            document.getElementById('opponent-status').innerText = isAIRoom ? '🤖 AI' : ('⚔️ ' + opponent);
                         } else {
                             document.getElementById('opponent-status').innerText = '對戰中';
                         }
@@ -598,6 +600,13 @@
                     } else {
                         socket.send(JSON.stringify({ type: 'SYNC' }));
                     }
+                } else if (data.type === 'AI_THINKING') {
+                    console.log('🤖 AI 正在思考...');
+                    const statusBar = document.getElementById('status-bar');
+                    statusBar.style.background = '#9b59b6';
+                    statusBar.innerText = '🤖 AI 正在思考中...';
+                } else if (data.type === 'AI_ERROR') {
+                    alert(data.message || 'AI 計算發生錯誤');
                 } else if (data.type === 'TURN_CHANGED') {
                     updateTurnStatus(data.nextTurn);
                     if (data.nextTurn === myColor) {
@@ -620,7 +629,7 @@
                     if (data.players && data.players.length >= 2) {
                         opponentName = data.players.find(p => p !== username);
                         if (opponentName) {
-                            document.getElementById('opponent-status').innerText = '⚔️ ' + opponentName;
+                            document.getElementById('opponent-status').innerText = isAIRoom ? '🤖 AI' : ('⚔️ ' + opponentName);
                         }
                     }
                     
@@ -633,7 +642,7 @@
                     
                     // 第 1 秒：顯示「玩家XXX加入對戰」
                     if (opponentName) {
-                        statusBar.innerText = '👤 玩家 ' + opponentName + ' 加入對戰';
+                        statusBar.innerText = isAIRoom ? '🤖 AI 對手就緒！' : ('👤 玩家 ' + opponentName + ' 加入對戰');
                     } else {
                         statusBar.innerText = '⚔️ 對手已加入！';
                     }

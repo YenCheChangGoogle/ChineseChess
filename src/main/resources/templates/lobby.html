@@ -17,6 +17,47 @@
         button { padding: 8px 16px; cursor: pointer; background: #e74c3c; color: white; border: none; border-radius: 3px; }
         button:hover { background: #c0392b; }
         .create-btn { font-size: 18px; padding: 12px 24px; width: 100%; margin-bottom: 20px; }
+
+        /* === AI 挑戰區塊樣式 === */
+        .ai-challenge-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .ai-challenge-section h3 {
+            margin-top: 0;
+            font-size: 18px;
+            color: white;
+        }
+        .ai-options {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .ai-options select {
+            padding: 8px 12px;
+            border-radius: 5px;
+            border: none;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .btn-ai {
+            padding: 10px 20px;
+            cursor: pointer;
+            background: #f39c12;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        .btn-ai:hover {
+            background: #e67e22;
+        }
     </style>
 </head>
 <body>
@@ -24,6 +65,24 @@
         <h1>遊戲大廳</h1>
         <div id="user-info" class="user-info">載入中...</div>
         <button class="create-btn" onclick="createRoom()">創建新房間</button>
+
+        <!-- AI 挑戰區塊 -->
+        <div class="ai-challenge-section">
+            <h3>🤖 挑戰 AI 對戰</h3>
+            <div class="ai-options">
+                <select id="ai-color">
+                    <option value="1">執紅（先手）</option>
+                    <option value="-1">執黑（後手）</option>
+                </select>
+                <select id="ai-difficulty">
+                    <option value="easy">🟢 簡單</option>
+                    <option value="normal" selected>🟡 普通</option>
+                    <option value="hard">🔴 困難</option>
+                </select>
+                <button class="btn-ai" onclick="challengeAI()">⚔️ 開始挑戰</button>
+            </div>
+        </div>
+
         <h3>目前可用房間</h3>
         <div id="room-list" class="room-list">
             <!-- 房間將在此動態生成 -->
@@ -38,6 +97,23 @@
             const resp = await fetch('/ChineseChess/api/rooms/create?username=' + username, { method: 'POST' });
             const room = await resp.json();
             window.location.href = `/ChineseChess/game?roomId=${room.roomId}`;
+        }
+
+        async function challengeAI() {
+            const username = localStorage.getItem('username');
+            const color = document.getElementById('ai-color').value;
+            const difficulty = document.getElementById('ai-difficulty').value;
+
+            const resp = await fetch(
+                `/ChineseChess/api/admin/rooms/create-ai?username=${username}&color=${color}&difficulty=${difficulty}`,
+                { method: 'POST' }
+            );
+            if (resp.ok) {
+                const room = await resp.json();
+                window.location.href = `/ChineseChess/game?roomId=${room.roomId}&isAI=true`;
+            } else {
+                alert('挑戰 AI 失敗，請重試！');
+            }
         }
 
         async function joinRoom(roomId) {
